@@ -25,3 +25,10 @@ Clay Brown – #9C7B6A (RGB: 156, 123, 106) Use: Icons, inactive UI elements
 Status and Feedback Colors (Optional) Olive Green – #6F7F5A (RGB: 111, 127, 90) Use: Success messages, confirmations
 Muted Amber – #C49A3A (RGB: 196, 154, 58) Use: Warning messages, alerts
 Soft Brick Red – #A45A4A (RGB: 164, 90, 74) Use: Error messages, destructive actions
+
+
+razor pay is at firbase functions 
+firebase functions:config:set razorpay.key_id=
+firebase functions:config:set razorpay.key_secret=
+firebase deploy --only functions
+.config() depreciation issue after march 

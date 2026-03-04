@@ -231,7 +231,8 @@ export function CartProvider({ children }) {
       item.title?.toLowerCase().includes('gift box')
     )
 
-    return hasComboOrGiftBox ? 0 : 50
+    // return hasComboOrGiftBox ? 0 : 50
+    return hasComboOrGiftBox ? 0 : 1
   }, [items])
 
   const value = useMemo(() => {
