@@ -100,11 +100,15 @@ function toShiprocketOrderPayload({ order, overrides }) {
 
   const address = String(shippingAddress.address || '').trim()
   const city = String(shippingAddress.city || '').trim()
-  const pincode = String(shippingAddress.postalCode || '').trim()
+  const pincodeRaw = String(shippingAddress.postalCode || '').trim()
 
-  const phone = String(overrides?.phone || order?.customerPhone || '').trim()
+  const phoneRaw = String(overrides?.phone || shippingAddress.phone || order?.customerPhone || '').trim()
   const state = String(overrides?.state || order?.shippingAddress?.state || '').trim()
   const country = String(overrides?.country || order?.shippingAddress?.country || 'India').trim()
+
+  const pincode = pincodeRaw.replace(/\D/g, '')
+  let phone = phoneRaw.replace(/\D/g, '')
+  if (phone.length > 10) phone = phone.slice(-10)
 
   if (!address || !city || !pincode || !phone || !state) {
     const missing = {
@@ -116,6 +120,18 @@ function toShiprocketOrderPayload({ order, overrides }) {
     }
     const err = new Error('Missing required address fields for Shiprocket')
     err.details = missing
+    throw err
+  }
+
+  if (country.toLowerCase() === 'india' && pincode.length !== 6) {
+    const err = new Error('Invalid pincode for Shiprocket (must be 6 digits)')
+    err.details = { pincode: pincodeRaw }
+    throw err
+  }
+
+  if (phone.length !== 10) {
+    const err = new Error('Invalid phone for Shiprocket (must be 10 digits)')
+    err.details = { phone: phoneRaw }
     throw err
   }
 
@@ -241,16 +257,28 @@ app.post('/shiprocket/create', requireFirebaseAuth, async (req, res) => {
 
     return res.json({ ok: true, shiprocket })
   } catch (e) {
-    // <--- ADD THESE 3 LINES TO DEBUG ---
     console.log("========================================");
     console.error("SHIPROCKET API ERROR DETAILS:", JSON.stringify(e.response?.data || e.message, null, 2));
     console.log("========================================");
-    // -----------------------------------
-
     const details = e?.details || null
-    const msg = e?.response?.data || e?.message || 'Unknown error'
-    const status = e?.response?.status || 500
-    return res.status(status >= 400 && status < 600 ? status : 500).json({ error: 'shiprocket_create_failed', message: msg, details })
+    const upstreamData = e?.response?.data || null
+    const upstreamStatus = e?.response?.status || null
+    const msg =
+      typeof upstreamData === 'string'
+        ? upstreamData
+        : upstreamData
+          ? JSON.stringify(upstreamData)
+          : e?.message || 'Unknown error'
+    const status = e?.response?.status || (details ? 400 : 500)
+    return res
+      .status(status >= 400 && status < 600 ? status : 500)
+      .json({
+        error: 'shiprocket_create_failed',
+        message: msg,
+        details,
+        upstreamStatus,
+        upstreamData,
+      })
   }
 })
 

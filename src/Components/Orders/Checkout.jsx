@@ -25,6 +25,8 @@ import {
 } from 'firebase/firestore';
 import { db, functions } from '../../firebase';
 
+void motion;
+
 const Checkout = () => {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
@@ -33,7 +35,7 @@ const Checkout = () => {
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState('');
-  const [showCouponInput, setShowCouponInput] = useState(false);
+  const [_showCouponInput, setShowCouponInput] = useState(false);
 
   const [addresses, setAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState('');
@@ -178,7 +180,16 @@ const Checkout = () => {
     });
 
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json?.message || 'Shiprocket shipment failed');
+    if (!res.ok) {
+      const msg =
+        typeof json?.message === 'string'
+          ? json.message
+          : json?.message
+            ? JSON.stringify(json.message)
+            : 'Shiprocket shipment failed'
+      const details = json?.details ? ` | details: ${JSON.stringify(json.details)}` : ''
+      throw new Error(`${msg}${details}`)
+    }
     return json;
   };
 
@@ -280,7 +291,7 @@ const Checkout = () => {
         setPlacing(false);
       });
       rzp.open();
-    } catch (error) {
+    } catch {
         setPaymentError('An error occurred. Please try again.');
         setPlacing(false);
     }
