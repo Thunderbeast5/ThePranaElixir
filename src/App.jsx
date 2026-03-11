@@ -32,6 +32,7 @@ import CustomerProfile from './Components/Customer/CustomerProfile'
 //Order Routes
 import Checkout from './Components/Orders/Checkout'
 import OrderSuccess from './Components/Orders/OrderSuccess'
+import OrderTracking from './Components/Orders/OrderTracking'
 
 import { useAuth } from './context/useAuth'
 import { db } from './firebase'
@@ -139,6 +140,7 @@ function App() {
         {/* Order routes */}
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order-success" element={<OrderSuccess />} />
+        <Route path="/orders/:orderId" element={<OrderTracking />} />
         {/* Contact route */}
         <Route path="/contact" element={<Contact />} />
         {/* Story route */}

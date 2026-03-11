@@ -133,7 +133,7 @@ const ProfileTab = ({ user, onSave, saving, onAvatarUpload }) => {
   );
 };
 
-const OrdersTab = ({ orders, loading }) => (
+const OrdersTab = ({ orders, loading, onOpenOrder }) => (
   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
     <h3 className="text-xs font-bold text-text-primary uppercase tracking-[0.2em] mb-8">Order History</h3>
     {loading ? (
@@ -145,7 +145,12 @@ const OrdersTab = ({ orders, loading }) => (
       </div>
     ) : (
       orders.map((order) => (
-        <div key={order.id} className="group bg-white border border-border/60 rounded-2xl p-6 hover:shadow-xl transition-all duration-500">
+        <button
+          key={order.id}
+          type="button"
+          onClick={() => onOpenOrder && onOpenOrder(order)}
+          className="group w-full text-left bg-white border border-border/60 rounded-2xl p-6 hover:shadow-xl transition-all duration-500"
+        >
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-border/30 pb-4">
             <div>
               <span className=" text-xl text-text-primary">{order.id}</span>
@@ -167,11 +172,11 @@ const OrdersTab = ({ orders, loading }) => (
             <p className="text-xs text-text-secondary uppercase tracking-wide truncate max-w-md">
               {order.items.join(" • ")}
             </p>
-            <button className="text-text-primary group-hover:text-primary-button transition-colors">
+            <span className="text-text-primary group-hover:text-primary-button transition-colors">
               <ChevronRight size={20}/>
-            </button>
+            </span>
           </div>
-        </div>
+        </button>
       ))
     )}
   </motion.div>
@@ -784,6 +789,7 @@ const CustomerProfile = () => {
         setOrders(ordersSnap.docs.map(d => {
           const data = d.data();
           return {
+            firestoreOrderId: d.id,
             id: data.orderNumber || `#${d.id.slice(0, 6).toUpperCase()}`,
             date: data.createdAt?.toDate().toLocaleDateString('en-IN', {
               year: 'numeric',
@@ -820,6 +826,12 @@ const CustomerProfile = () => {
     { id: 'addresses', label: 'Address', icon: <MapPin size={18} /> },
     { id: 'wishlist', label: 'Wishlist', icon: <Heart size={18} /> },
   ];
+
+  const handleOpenOrder = (order) => {
+    const id = String(order?.firestoreOrderId || '').trim();
+    if (!id) return;
+    navigate(`/orders/${id}`);
+  };
 
   return (
     <div className="min-h-screen bg-bg-main selection:bg-primary-button/10">
@@ -884,7 +896,7 @@ const CustomerProfile = () => {
                 )}
                 
                 {activeTab === 'orders' && (
-                  <OrdersTab orders={orders} loading={loadingData} />
+                  <OrdersTab orders={orders} loading={loadingData} onOpenOrder={handleOpenOrder} />
                 )}
                 
                 {activeTab === 'addresses' && (
