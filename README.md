@@ -32,3 +32,6 @@ firebase functions:config:set razorpay.key_id=
 firebase functions:config:set razorpay.key_secret=
 firebase deploy --only functions
 .config() depreciation issue after march 
+
+
+firevase fubc fix
