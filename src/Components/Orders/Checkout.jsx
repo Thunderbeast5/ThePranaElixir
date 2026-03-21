@@ -16,14 +16,13 @@ import Navbar from '../Pages/Navbar';
 import { useAuth } from '../../context/useAuth';
 import { useCart } from '../../context/useCart';
 import { usePromo } from '../../context/usePromo';
-import { httpsCallable } from 'firebase/functions';
 import {
   collection,
   getDocs,
   orderBy,
   query,
 } from 'firebase/firestore';
-import { db, functions } from '../../firebase';
+import { db } from '../../firebase';
 
 void motion;
 
@@ -226,18 +225,33 @@ const Checkout = () => {
         return;
       }
 
-      const createRazorpayOrder = httpsCallable(functions, 'createRazorpayOrder');
-      const createRes = await createRazorpayOrder({
-        total: Number(finalTotal || 0),
-        subtotal: Number(cartSubtotal || 0),
-        discount: Number(discount || 0),
-        shipping: Number(shipping || 0),
-        items: payloadItems,
-        shippingAddress,
-        customerEmail: user.email || '',
+      const baseUrl = String(import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
+      if (!baseUrl) throw new Error('Missing VITE_BACKEND_URL');
+
+      const token = await user.getIdToken();
+      const createRes = await fetch(`${baseUrl}/razorpay/create-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          total: Number(finalTotal || 0),
+          subtotal: Number(cartSubtotal || 0),
+          discount: Number(discount || 0),
+          shipping: Number(shipping || 0),
+          items: payloadItems,
+          shippingAddress,
+          customerEmail: user.email || '',
+        }),
       });
 
-      const { firestoreOrderId, razorpayOrderId, amount, currency, keyId } = createRes?.data || {};
+      const createJson = await createRes.json().catch(() => ({}));
+      if (!createRes.ok) {
+        throw new Error(createJson?.message || 'Failed to create Razorpay order');
+      }
+
+      const { firestoreOrderId, razorpayOrderId, amount, currency, keyId } = createJson || {};
 
       if (!firestoreOrderId || !razorpayOrderId || !keyId) {
         setPaymentError('Initialization failed.');
@@ -259,13 +273,24 @@ const Checkout = () => {
         notes: { firestoreOrderId },
         handler: async (response) => {
           try {
-            const verifyRazorpayPayment = httpsCallable(functions, 'verifyRazorpayPayment');
-            await verifyRazorpayPayment({
-              firestoreOrderId,
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
+            const verifyRes = await fetch(`${baseUrl}/razorpay/verify-payment`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                firestoreOrderId,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
             });
+
+            const verifyJson = await verifyRes.json().catch(() => ({}));
+            if (!verifyRes.ok) {
+              throw new Error(verifyJson?.message || 'Verification failed.');
+            }
 
             try { await createShiprocketShipment({ firestoreOrderId }); } catch (err) { console.error(err); }
 

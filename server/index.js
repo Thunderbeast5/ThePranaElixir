@@ -1,9 +1,11 @@
 import 'dotenv/config'
 import process from 'node:process'
+import crypto from 'node:crypto'
 import express from 'express'
 import cors from 'cors'
 import axios from 'axios'
 import admin from 'firebase-admin'
+import Razorpay from 'razorpay'
 
 const app = express()
 
@@ -32,6 +34,25 @@ if (FIREBASE_SERVICE_ACCOUNT_JSON) {
 }
 
 const db = () => admin.firestore()
+
+function getRazorpayClient() {
+  const keyId = process.env.RAZORPAY_KEY_ID
+  const keySecret = process.env.RAZORPAY_KEY_SECRET
+  if (!keyId || !keySecret) {
+    const err = new Error('Missing RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET')
+    err.code = 'missing_razorpay_env'
+    throw err
+  }
+
+  return {
+    keyId,
+    keySecret,
+    client: new Razorpay({
+      key_id: keyId,
+      key_secret: keySecret,
+    }),
+  }
+}
 
 async function requireFirebaseAuth(req, res, next) {
   try {
@@ -165,6 +186,167 @@ function toShiprocketOrderPayload({ order, overrides }) {
 
 app.get('/health', (req, res) => {
   res.json({ ok: true })
+})
+
+// Create Razorpay order + create Firestore order document
+app.post('/razorpay/create-order', requireFirebaseAuth, async (req, res) => {
+  try {
+    const total = Number(req.body?.total || 0)
+    const subtotal = Number(req.body?.subtotal || 0)
+    const discount = Number(req.body?.discount || 0)
+    const shipping = Number(req.body?.shipping || 0)
+    const items = Array.isArray(req.body?.items) ? req.body.items : []
+    const shippingAddress = req.body?.shippingAddress || {}
+    const customerEmail = String(req.body?.customerEmail || '')
+
+    if (!Number.isFinite(total) || total <= 0) {
+      return res.status(400).json({ error: 'invalid_total', message: 'Invalid total amount.' })
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'empty_cart', message: 'Cart is empty.' })
+    }
+    if (!admin.apps.length) {
+      return res.status(500).json({ error: 'firebase_not_initialized', message: 'Firebase Admin not initialized' })
+    }
+
+    const { client, keyId } = getRazorpayClient()
+
+    const orderRef = await db().collection('orders').add({
+      userId: String(req.user.uid || ''),
+      customerEmail,
+      items: items.map((it) => ({
+        productId: String(it.productId || it.id || ''),
+        title: String(it.title || ''),
+        price: Number(it.price || 0),
+        quantity: Number(it.quantity || 0),
+        image: String(it.image || ''),
+      })),
+      subtotal: Number(subtotal || 0),
+      discount: Number(discount || 0),
+      shipping: Number(shipping || 0),
+      total: Number(total || 0),
+      paymentMethod: 'razorpay',
+      paymentStatus: 'pending',
+      status: 'Pending',
+      adminInstruction: '',
+      shippingAddress: {
+        firstName: String(shippingAddress.firstName || '').trim(),
+        lastName: String(shippingAddress.lastName || '').trim(),
+        address: String(shippingAddress.address || '').trim(),
+        city: String(shippingAddress.city || '').trim(),
+        postalCode: String(shippingAddress.postalCode || '').trim(),
+        state: String(shippingAddress.state || '').trim(),
+        phone: String(shippingAddress.phone || '').trim(),
+        savedAddressId: shippingAddress.savedAddressId || null,
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+
+    const orderNumber = `ORD-${orderRef.id.slice(0, 8).toUpperCase()}`
+    await orderRef.set({ orderNumber }, { merge: true })
+
+    const amountPaise = Math.round(total * 100)
+    const rzpOrder = await client.orders.create({
+      amount: amountPaise,
+      currency: 'INR',
+      receipt: orderRef.id,
+      notes: {
+        firestoreOrderId: orderRef.id,
+        orderNumber,
+        userId: String(req.user.uid || ''),
+      },
+    })
+
+    await orderRef.set(
+      {
+        razorpay: {
+          orderId: rzpOrder.id,
+          amount: amountPaise,
+          currency: rzpOrder.currency,
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    )
+
+    return res.json({
+      firestoreOrderId: orderRef.id,
+      orderNumber,
+      razorpayOrderId: rzpOrder.id,
+      amount: amountPaise,
+      currency: rzpOrder.currency,
+      keyId,
+    })
+  } catch (e) {
+    const status = e?.code === 'missing_razorpay_env' ? 500 : 500
+    return res.status(status).json({
+      error: 'razorpay_create_order_failed',
+      message: e?.message || 'Failed to create Razorpay order.',
+    })
+  }
+})
+
+// Verify Razorpay payment signature and mark Firestore order as paid
+app.post('/razorpay/verify-payment', requireFirebaseAuth, async (req, res) => {
+  try {
+    const firestoreOrderId = String(req.body?.firestoreOrderId || '')
+    const razorpay_order_id = String(req.body?.razorpay_order_id || '')
+    const razorpay_payment_id = String(req.body?.razorpay_payment_id || '')
+    const razorpay_signature = String(req.body?.razorpay_signature || '')
+
+    if (!firestoreOrderId || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ error: 'missing_payment_details', message: 'Missing payment details' })
+    }
+
+    const { keySecret } = getRazorpayClient()
+
+    const generatedSignature = crypto
+      .createHmac('sha256', keySecret)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex')
+
+    if (generatedSignature !== razorpay_signature) {
+      return res.status(403).json({ error: 'invalid_signature', message: 'Invalid payment signature' })
+    }
+
+    const orderRef = db().collection('orders').doc(firestoreOrderId)
+    const snap = await orderRef.get()
+    if (!snap.exists) {
+      return res.status(404).json({ error: 'order_not_found', message: 'Order not found' })
+    }
+
+    const order = snap.data() || {}
+    if (String(order.userId || '') !== String(req.user.uid || '')) {
+      return res.status(403).json({
+        error: 'forbidden',
+        message: 'You do not have permission to modify this order.',
+      })
+    }
+
+    await orderRef.set(
+      {
+        paymentStatus: 'paid',
+        status: 'Processing',
+        razorpay: {
+          ...(order.razorpay || {}),
+          orderId: razorpay_order_id,
+          paymentId: razorpay_payment_id,
+          signature: razorpay_signature,
+          verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    )
+
+    return res.json({ ok: true })
+  } catch (e) {
+    return res.status(500).json({
+      error: 'razorpay_verify_failed',
+      message: e?.message || 'Verification failed.',
+    })
+  }
 })
 
 // Create Shiprocket order/shipment for an existing Firestore order
