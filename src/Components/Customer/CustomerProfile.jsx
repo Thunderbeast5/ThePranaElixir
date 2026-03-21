@@ -161,6 +161,7 @@ const OrdersTab = ({ orders, loading, onOpenOrder }) => (
                 ${order.status === 'Delivered' ? 'bg-green-50 text-green-600' : 
                 order.status === 'Shipped' ? 'bg-blue-50 text-blue-600' :
                 order.status === 'Processing' ? 'bg-yellow-50 text-yellow-600' :
+                order.status === 'Cancelled' ? 'bg-red-50 text-red-600' :
                 'bg-orange-50 text-orange-600'
               }`}>
                 {order.status}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -17,7 +17,9 @@ import {
   ChevronRight, 
   Search,
   LogOut,
-  UploadCloud
+  UploadCloud,
+  Filter,
+  ArrowUpDown
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../../firebase';
@@ -309,12 +311,37 @@ const PromoManager = () => {
 // 3. ORDERS MANAGER
 const OrdersManager = () => {
   const [orders, setOrders] = useState([]); const [loading, setLoading] = useState(true);
+  const [cityFilter, setCityFilter] = useState('');
+  const [stateFilter, setStateFilter] = useState('');
+  const [sortOrder, setSortOrder] = useState('default');
+
   React.useEffect(() => {
     return onSnapshot(query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(50)), snap => {
       setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false);
     });
   }, []);
   const updateOrder = async (id, data) => await setDoc(doc(db, 'orders', id), { ...data, updatedAt: serverTimestamp() }, { merge: true });
+
+  const uniqueCities = useMemo(() => [...new Set(orders.map(o => o.shippingAddress?.city).filter(Boolean))].sort(), [orders]);
+  const uniqueStates = useMemo(() => [...new Set(orders.map(o => o.shippingAddress?.state).filter(Boolean))].sort(), [orders]);
+
+  const filteredOrders = useMemo(() => {
+    let result = [...orders];
+    if (cityFilter) result = result.filter(o => o.shippingAddress?.city === cityFilter);
+    if (stateFilter) result = result.filter(o => o.shippingAddress?.state === stateFilter);
+    if (sortOrder === 'price-high') result.sort((a, b) => (b.total || 0) - (a.total || 0));
+    else if (sortOrder === 'price-low') result.sort((a, b) => (a.total || 0) - (b.total || 0));
+    return result;
+  }, [orders, cityFilter, stateFilter, sortOrder]);
+
+  const getStatusStyle = (status) => {
+    switch (status) {
+      case 'Shipped': return 'bg-green-100 text-green-700';
+      case 'Delivered': return 'bg-blue-100 text-blue-700';
+      case 'Cancelled': return 'bg-red-100 text-red-700';
+      default: return 'bg-orange-100 text-orange-700';
+    }
+  };
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
@@ -323,9 +350,38 @@ const OrdersManager = () => {
          <p className="text-[10px] uppercase tracking-widest text-text-secondary font-bold mt-1">Track & Fulfill</p>
       </div>
 
+      {/* Filter Bar */}
+      <div className="bg-white p-5 rounded-[1.5rem] border border-border/40 shadow-sm flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2 text-text-secondary">
+          <Filter size={16} />
+          <span className="text-[10px] font-bold uppercase tracking-widest">Filters</span>
+        </div>
+        <select value={cityFilter} onChange={e => setCityFilter(e.target.value)} className="bg-bg-surface border border-border/40 rounded-full px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-text-primary outline-none cursor-pointer">
+          <option value="">All Cities</option>
+          {uniqueCities.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={stateFilter} onChange={e => setStateFilter(e.target.value)} className="bg-bg-surface border border-border/40 rounded-full px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-text-primary outline-none cursor-pointer">
+          <option value="">All States</option>
+          {uniqueStates.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <div className="flex items-center gap-2 ml-auto">
+          <ArrowUpDown size={16} className="text-text-secondary" />
+          <select value={sortOrder} onChange={e => setSortOrder(e.target.value)} className="bg-bg-surface border border-border/40 rounded-full px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-text-primary outline-none cursor-pointer">
+            <option value="default">Latest First</option>
+            <option value="price-high">Price: High → Low</option>
+            <option value="price-low">Price: Low → High</option>
+          </select>
+        </div>
+        {(cityFilter || stateFilter || sortOrder !== 'default') && (
+          <button onClick={() => { setCityFilter(''); setStateFilter(''); setSortOrder('default'); }} className="text-[10px] font-bold uppercase tracking-widest text-red-500 hover:text-red-700 transition-colors">
+            Clear All
+          </button>
+        )}
+      </div>
+
       <div className="grid gap-6">
-        {loading ? <div className="text-center italic text-text-secondary">Fetching orders...</div> : orders.length === 0 ? <div className="text-center italic text-text-secondary">No orders received yet.</div> : 
-         orders.map(order => (
+        {loading ? <div className="text-center italic text-text-secondary">Fetching orders...</div> : filteredOrders.length === 0 ? <div className="text-center italic text-text-secondary">{orders.length === 0 ? 'No orders received yet.' : 'No orders match the selected filters.'}</div> : 
+         filteredOrders.map(order => (
           <div key={order.id} className="bg-white border border-border/40 rounded-[2rem] p-8 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-border/10 pb-6">
               <div>
@@ -334,8 +390,8 @@ const OrdersManager = () => {
               </div>
               <div className="flex items-center gap-4 mt-4 md:mt-0">
                 <span className="font-bold text-xl text-text-primary">₹{order.total}</span>
-                <select value={order.status || 'Pending'} onChange={e => updateOrder(order.id, { status: e.target.value })} className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest outline-none cursor-pointer border-none ${order.status === 'Shipped' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                  {['Pending', 'Processing', 'Shipped', 'Delivered'].map(s => <option key={s} value={s}>{s}</option>)}
+                <select value={order.status || 'Pending'} onChange={e => updateOrder(order.id, { status: e.target.value })} className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest outline-none cursor-pointer border-none ${getStatusStyle(order.status)}`}>
+                  {['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
             </div>

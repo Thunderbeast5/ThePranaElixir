@@ -387,6 +387,8 @@ app.post('/orders/:orderId/cancel', requireFirebaseAuth, async (req, res) => {
       })
     }
 
+    const refundNote = 'Refund will be processed within 5-7 business days to your original payment method.'
+
     await orderRef.set(
       {
         status: 'Cancelled',
@@ -394,13 +396,14 @@ app.post('/orders/:orderId/cancel', requireFirebaseAuth, async (req, res) => {
           reason: reason || null,
           cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
           cancelledBy: 'customer',
+          refundNote,
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true },
     )
 
-    return res.json({ ok: true })
+    return res.json({ ok: true, refundNote })
   } catch (e) {
     return res.status(500).json({ error: 'cancel_failed', message: e?.message || 'Failed to cancel order' })
   }

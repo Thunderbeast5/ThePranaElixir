@@ -51,6 +51,8 @@ const Checkout = () => {
 
   const [placing, setPlacing] = useState(false);
   const [paymentError, setPaymentError] = useState('');
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+  const [pinCodeVerified, setPinCodeVerified] = useState(false);
 
   const validCoupons = {
     ...(promoCoupon?.code
@@ -139,6 +141,47 @@ const Checkout = () => {
     setAppliedCoupon(null);
     setCouponCode('');
     setCouponError('');
+  };
+
+  // --- Postal code auto-verification ---
+  const verifyPinCode = async (pinCode) => {
+    const pinRegex = /^[1-9][0-9]{5}$/;
+    if (!pinRegex.test(pinCode)) {
+      setPinCodeVerified(false);
+      return;
+    }
+
+    setIsVerifyingPin(true);
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pinCode}`);
+      const data = await response.json();
+
+      if (data[0].Status === 'Success' && data[0].PostOffice && data[0].PostOffice.length > 0) {
+        const postOffice = data[0].PostOffice[0];
+        setShippingForm(prev => ({
+          ...prev,
+          city: postOffice.District || prev.city,
+          state: postOffice.State || prev.state,
+        }));
+        setPinCodeVerified(true);
+      } else {
+        setPinCodeVerified(false);
+      }
+    } catch (err) {
+      console.error('PIN verification failed:', err);
+      setPinCodeVerified(false);
+    } finally {
+      setIsVerifyingPin(false);
+    }
+  };
+
+  const handlePostalCodeChange = (e) => {
+    const pin = e.target.value.replace(/\D/g, '').slice(0, 6);
+    setShippingForm(p => ({ ...p, postalCode: pin }));
+    setPinCodeVerified(false);
+    if (pin.length === 6) {
+      verifyPinCode(pin);
+    }
   };
 
   const loadRazorpayScript = () => {
@@ -363,20 +406,48 @@ const Checkout = () => {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-10">
-                {Object.keys(shippingForm).map((field) => (
-                  <div key={field} className={`space-y-1 border-b border-border/40 pb-2 ${field === 'address' ? 'md:col-span-2' : ''}`}>
-                    <label className="text-[10px] uppercase tracking-widest font-bold text-text-secondary">
-                        {field.replace(/([A-Z])/g, ' $1')}
-                    </label>
-                    <input
-                      required
-                      value={shippingForm[field]}
-                      onChange={(e) => setShippingForm(p => ({ ...p, [field]: e.target.value }))}
-                      className="w-full bg-transparent outline-none text-text-primary py-1 placeholder:text-border/40"
-                      placeholder={`Enter ${field}`}
-                    />
-                  </div>
-                ))}
+                {Object.keys(shippingForm).map((field) => {
+                  const isPostalCode = field === 'postalCode';
+                  const isCityOrState = field === 'city' || field === 'state';
+                  const isAutoFilled = isCityOrState && pinCodeVerified;
+
+                  return (
+                    <div key={field} className={`space-y-1 border-b border-border/40 pb-2 ${field === 'address' ? 'md:col-span-2' : ''}`}>
+                      <label className="text-[10px] uppercase tracking-widest font-bold text-text-secondary">
+                          {field.replace(/([A-Z])/g, ' $1')}
+                      </label>
+                      <div className="relative">
+                        <input
+                          required
+                          value={shippingForm[field]}
+                          onChange={isPostalCode ? handlePostalCodeChange : (e) => setShippingForm(p => ({ ...p, [field]: e.target.value }))}
+                          readOnly={isAutoFilled}
+                          className={`w-full bg-transparent outline-none text-text-primary py-1 placeholder:text-border/40 ${isAutoFilled ? 'text-text-primary/80' : ''}`}
+                          placeholder={`Enter ${field}`}
+                          {...(isPostalCode ? { inputMode: 'numeric', maxLength: 6 } : {})}
+                        />
+                        {isPostalCode && isVerifyingPin && (
+                          <div className="absolute right-0 top-1/2 -translate-y-1/2">
+                            <div className="w-4 h-4 border-2 border-primary-button border-t-transparent rounded-full animate-spin"></div>
+                          </div>
+                        )}
+                        {isPostalCode && pinCodeVerified && !isVerifyingPin && (
+                          <div className="absolute right-0 top-1/2 -translate-y-1/2 text-green-600">
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                      {isAutoFilled && (
+                        <p className="text-[9px] text-green-600 mt-0.5">✓ Auto-filled from PIN</p>
+                      )}
+                      {isPostalCode && pinCodeVerified && (
+                        <p className="text-[9px] text-green-600 mt-0.5">✓ PIN code verified</p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </motion.div>
 
