@@ -349,6 +349,63 @@ app.post('/razorpay/verify-payment', requireFirebaseAuth, async (req, res) => {
   }
 })
 
+function normalizeOrderStatus(status) {
+  return String(status || '').trim().toLowerCase()
+}
+
+function isOrderCancellable(order) {
+  const status = normalizeOrderStatus(order?.status)
+  if (!status) return true
+  if (status === 'cancelled' || status === 'canceled') return false
+  if (status === 'shipped' || status === 'delivered') return false
+  return true
+}
+
+// Cancel an order (customer-owned, only before shipment)
+app.post('/orders/:orderId/cancel', requireFirebaseAuth, async (req, res) => {
+  try {
+    const orderId = String(req.params.orderId || '').trim()
+    if (!orderId) return res.status(400).json({ error: 'missing_order_id' })
+
+    const reason = String(req.body?.reason || '').trim()
+
+    const orderRef = db().collection('orders').doc(orderId)
+    const snap = await orderRef.get()
+    if (!snap.exists) {
+      return res.status(404).json({ error: 'order_not_found', message: 'Order not found' })
+    }
+
+    const order = snap.data() || {}
+    if (String(order.userId || '') !== String(req.user.uid || '')) {
+      return res.status(403).json({ error: 'forbidden', message: 'You cannot cancel this order' })
+    }
+
+    if (!isOrderCancellable(order)) {
+      return res.status(400).json({
+        error: 'order_not_cancellable',
+        message: 'This order can no longer be cancelled.',
+      })
+    }
+
+    await orderRef.set(
+      {
+        status: 'Cancelled',
+        cancel: {
+          reason: reason || null,
+          cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+          cancelledBy: 'customer',
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    )
+
+    return res.json({ ok: true })
+  } catch (e) {
+    return res.status(500).json({ error: 'cancel_failed', message: e?.message || 'Failed to cancel order' })
+  }
+})
+
 // Create Shiprocket order/shipment for an existing Firestore order
 app.post('/shiprocket/create', requireFirebaseAuth, async (req, res) => {
   try {

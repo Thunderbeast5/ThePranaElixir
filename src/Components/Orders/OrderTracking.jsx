@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ExternalLink, Package } from 'lucide-react';
@@ -31,12 +31,33 @@ const OrderTracking = () => {
   const [order, setOrder] = useState(null);
   const [loadingOrder, setLoadingOrder] = useState(true);
 
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelError, setCancelError] = useState('');
+
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState('');
   const [trackingData, setTrackingData] = useState(null);
 
   const currentStatus = useMemo(() => normalizeStatus(order?.status), [order?.status]);
   const currentIdx = useMemo(() => statusIndex(order?.status), [order?.status]);
+
+  const canCancel = useMemo(() => {
+    const s = String(order?.status || '').trim().toLowerCase();
+    if (!s) return true;
+    if (s === 'cancelled' || s === 'canceled') return false;
+    if (s === 'shipped' || s === 'delivered') return false;
+    return true;
+  }, [order?.status]);
+
+  const refreshOrder = useCallback(async () => {
+    if (!orderId) return;
+    const snap = await getDoc(doc(db, 'orders', String(orderId)));
+    if (!snap.exists()) {
+      setOrder(null);
+      return;
+    }
+    setOrder({ id: snap.id, ...snap.data() });
+  }, [orderId]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -49,19 +70,14 @@ const OrderTracking = () => {
       if (!orderId) return;
       setLoadingOrder(true);
       try {
-        const snap = await getDoc(doc(db, 'orders', String(orderId)));
-        if (!snap.exists()) {
-          setOrder(null);
-          return;
-        }
-        setOrder({ id: snap.id, ...snap.data() });
+        await refreshOrder();
       } finally {
         setLoadingOrder(false);
       }
     };
 
     run();
-  }, [orderId]);
+  }, [orderId, refreshOrder]);
 
   const handleFetchTracking = async () => {
     setTrackingError('');
@@ -102,6 +118,57 @@ const OrderTracking = () => {
       setTrackingError(e?.message || 'Failed to fetch tracking details.');
     } finally {
       setTrackingLoading(false);
+    }
+  };
+
+  const handleCancelOrder = async () => {
+    setCancelError('');
+
+    if (!orderId) {
+      setCancelError('Missing order id.');
+      return;
+    }
+    if (!user) {
+      setCancelError('Please login again.');
+      return;
+    }
+    if (!canCancel) {
+      setCancelError('This order can no longer be cancelled.');
+      return;
+    }
+
+    const ok = window.confirm('Are you sure you want to cancel this order?');
+    if (!ok) return;
+
+    const baseUrl = String(import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
+    if (!baseUrl) {
+      setCancelError('Cancellation is not configured. Missing VITE_BACKEND_URL.');
+      return;
+    }
+
+    setCancelLoading(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`${baseUrl}/orders/${encodeURIComponent(String(orderId))}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({}),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = typeof json?.message === 'string' ? json.message : 'Failed to cancel order.';
+        throw new Error(msg);
+      }
+
+      await refreshOrder();
+    } catch (e) {
+      setCancelError(e?.message || 'Failed to cancel order.');
+    } finally {
+      setCancelLoading(false);
     }
   };
 
@@ -172,6 +239,16 @@ const OrderTracking = () => {
                     </div>
                   )}
 
+                  {canCancel ? (
+                    <button
+                      onClick={handleCancelOrder}
+                      disabled={cancelLoading}
+                      className="px-6 py-3 rounded-full bg-white border border-red-200 text-red-500 text-[10px] font-bold uppercase tracking-widest hover:bg-red-50 transition-colors disabled:opacity-50"
+                    >
+                      {cancelLoading ? 'Cancelling...' : 'Cancel Order'}
+                    </button>
+                  ) : null}
+
                   {order?.shiprocket?.raw?.tracking_url ? (
                     <a
                       href={String(order.shiprocket.raw.tracking_url)}
@@ -189,6 +266,12 @@ const OrderTracking = () => {
               {trackingError ? (
                 <div className="mt-6 p-4 bg-red-50 text-red-500 text-xs font-bold uppercase tracking-widest rounded-xl">
                   {trackingError}
+                </div>
+              ) : null}
+
+              {cancelError ? (
+                <div className="mt-6 p-4 bg-red-50 text-red-500 text-xs font-bold uppercase tracking-widest rounded-xl">
+                  {cancelError}
                 </div>
               ) : null}
 
