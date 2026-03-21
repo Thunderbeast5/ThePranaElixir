@@ -7,6 +7,11 @@ import { CartProvider } from './context/CartContext.jsx'
 import { PromoProvider } from './context/PromoContext.jsx'
 import { ToastProvider } from './context/ToastContext.jsx'
 
+console.log(
+  "%cDeveloped by Vedant Purkar | vedant.purkar05@gmail.com",
+  "font-weight: bold;"
+);
+
 createRoot(document.getElementById('root')).render(
   <HelmetProvider>
     <ToastProvider>
