@@ -1,5 +1,5 @@
 day 3
-Color Theme vedant
+Color Theme 
 
 Logo Dark - 169,135,82
 Logo Secondary - 236,227,216
