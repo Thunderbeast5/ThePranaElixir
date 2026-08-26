@@ -1,5 +1,5 @@
 
-Color Theme 
+Color  
 
 Logo Dark - 169,135,82
 Logo Secondary - 236,227,216
