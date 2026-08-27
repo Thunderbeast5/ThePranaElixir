@@ -1,6 +1,3 @@
-
-Color  
-
 Logo Dark - 169,135,82
 Logo Secondary - 236,227,216
 Brown - 108,74,64
