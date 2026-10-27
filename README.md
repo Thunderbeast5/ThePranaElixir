@@ -1,5 +1,5 @@
  l 
-Warm Cream – #F5EFE8 (RGB: 245, 239, 232) Use: Section background, alternate sections
+Warm Cream – #F5EFE: 245, 239, 232) Use: Section background, alternate sections
 Off White – #FAF7F3 (RGB: 250, 247, 243) Use: Cards, , l
 
 Text Colors Deep Brown – #6C4A40 (RGB: 108, 74, 64) Use: Primary text, headings, body text
