@@ -1,4 +1,4 @@
- – #8B6A5E (RGB: 139, 106, 94) Use: Secondary text, descriptions
+  (RGB: 139, 106, 94) Use: Secondary text, descriptions
  Taupe – #B7A79C (RGB: 183, 167, 156) Use: Disabled text, placeholders, helper text
 
 Primary and Action Colors Logo Dark Gold – #A98752 (RGB: 169, 135, 82) Use: Primary buttons, links, highlights
