@@ -2,7 +2,7 @@
  Taupe – #B7A79C (RGB: 183, 167, 156) Use: Disabled text, placeholders, helper text
 
 Primary and Action Colors Logo Dark Gold – #A98752 (RGB: 169, 135, 82) Use: Primary buttons, links, highlights
-Dark Gold (Hover) – #8F7243 (RGB: 143, 114, 67) Use: Button hover state
+Dark Gold (Hover) –  (RGB: 143, 114, 67) Use: Button hover state
 Deep Gold (Active) – #7A5F36 (RGB: 122, 95, 54) Use: Button active or pressed state
 
 Accent and UI Support Colors Warm Sand – #D6C3A3 (RGB: 214, 195, 163) Use: Subtle highlights, badges
