@@ -1,5 +1,7 @@
  text, descriptions
- Taupe – #B7A79C (RGB: 183, 167, 156) Use: Disabled text, placeholders, helper text
+ 
+
+ – #B7A79C (RGB: 183, 167, 156) Use: Disabled text, placeholders, helper text
 
 Primary and Action Colors Logo Dark Gold – #A98752 (RGB: 169, 135, 82) Use: Primary buttons, links, highlights
 Dark Gold (Hover) –  (RGB: 143, 114, 67) Use: Button hover state
