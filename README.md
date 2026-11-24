@@ -1,4 +1,4 @@
- text, descriptions
+ t
  
 
  – #B7A79C (RGB: 183, 167, 156) Use: Disabled text, placeholders, helper text
